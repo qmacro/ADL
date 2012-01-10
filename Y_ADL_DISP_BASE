@@ -1,0 +1,187 @@
+class Y_ADL_DISP_BASE definition
+  public
+  create public .
+
+public section.
+*"* public components of class Y_ADL_DISP_BASE
+*"* do not include other source files here!!!
+
+  interfaces IF_HTTP_EXTENSION .
+
+  types:
+    begin of TY_HANDLER .
+  types pattern type string.
+  types handler type seoclsname.
+  types end of TY_HANDLER .
+  types:
+    TY_HANDLERS type table of ty_handler .
+
+  data HANDLERS type TY_HANDLERS .
+  data METHOD type STRING .
+  data PATH type STRING .
+  data MATCHES type STRINGTAB .
+  data HANDLERCLASS type SEOCLSNAME .
+  constants GET_RESPONSE type STRING value 'GET_RESPONSE'. "#EC NOTEXT
+
+  methods HANDLER
+    importing
+      !P type STRING
+      !H type SEOCLSNAME .
+  methods DISPATCH
+    importing
+      !SERVER type ref to IF_HTTP_SERVER .
+protected section.
+*"* protected components of class Y_ADL_DISP_BASE
+*"* do not include other source files here!!!
+private section.
+*"* private components of class Y_ADL_DISP_BASE
+*"* do not include other source files here!!!
+
+  methods DERIVE_HANDLER
+    importing
+      !PATH type STRING
+    exporting
+      value(CLASS) type SEOCLSNAME
+      value(MATCHES) type STRINGTAB .
+ENDCLASS.
+
+
+
+CLASS Y_ADL_DISP_BASE IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method Y_ADL_DISP_BASE->DERIVE_HANDLER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] PATH                           TYPE        STRING
+* | [<---] CLASS                          TYPE        SEOCLSNAME
+* | [<---] MATCHES                        TYPE        STRINGTAB
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method DERIVE_HANDLER.
+
+* Loops through the patterns trying to find a match on the URL's path info
+* If it finds one, it returns the corresponding handler class name, plus
+* an optional list of matched strings from parentheses in the pattern
+
+  data:
+        l_path      type char255
+      , ls_handler  type ty_handler
+      , lt_match    type match_result_tab
+      , ls_match    type match_result
+      , ls_submatch type submatch_result
+      .
+
+  field-symbols: <submatch> type any.
+
+  loop at handlers into ls_handler.
+    find regex ls_handler-pattern in path results lt_match.
+    if sy-subrc = 0.
+      class = ls_handler-handler.
+      read table lt_match into ls_match index 1.
+      l_path = path.
+      loop at ls_match-submatches into ls_submatch.
+        assign l_path+ls_submatch-offset(ls_submatch-length) to <submatch>.
+        append <submatch> to matches.
+      endloop.
+      exit.
+    endif.
+  endloop.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Y_ADL_DISP_BASE->DISPATCH
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] SERVER                         TYPE REF TO IF_HTTP_SERVER
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method DISPATCH.
+
+  data:
+      l_script      type string
+    , lt_meth_parm  type abap_parmbind_tab
+    , lt_resp_parm  type abap_parmbind_tab
+    , lt_meth_excp  type abap_excpbind_tab
+    , ls_parm       type abap_parmbind
+    , lo_excp       type ref to cx_sy_dyn_call_error
+    , l_excptext    type string
+    , lo_handler    type ref to object
+    .
+
+  method = server->request->get_header_field( '~request_method' ).
+
+* Work around issue with urlsuffix losing trailing slash
+  path = server->request->get_header_field( '~request_uri' ).
+  l_script = server->request->get_header_field( '~script_name' ).
+  replace first occurrence of l_script in path with ''.
+
+  call method derive_handler
+    exporting path = path
+    importing class = handlerclass
+              matches = matches
+    .
+
+* For receiving response on GET_RESPONSE call
+  ls_parm-name = 'RESPONSE'.
+  ls_parm-kind = cl_abap_objectdescr=>receiving.
+  get reference of server->response into ls_parm-value.
+  insert ls_parm into table lt_resp_parm.
+
+* For supplying matches on method call
+  ls_parm-name = 'MATCHES'.
+  ls_parm-kind = cl_abap_objectdescr=>exporting.
+  get reference of matches into ls_parm-value.
+  insert ls_parm into table lt_meth_parm.
+
+* Instantiate handler object
+  try.
+    create object lo_handler type (handlerclass)
+      exporting server = server.
+  catch cx_sy_create_object_error.
+    server->response->set_status( code = '404' reason = 'NOT FOUND (NO CLASS)' ).
+    exit.
+  endtry.
+
+* Call handler method (GET, POST, etc)
+  try.
+    call method lo_handler->(method)
+      parameter-table lt_meth_parm
+      exception-table lt_meth_excp.
+*   Retrieve response
+    call method lo_handler->(GET_RESPONSE)
+      parameter-table lt_resp_parm.
+  catch cx_sy_dyn_call_illegal_method.
+*   XXX Need to send 'Allow' header with this
+    server->response->set_status( code = '405' reason = 'NOT IMPLEMENTED' ).
+    exit.
+  catch cx_sy_dyn_call_error into lo_excp.
+    l_excptext = lo_excp->get_text( ).
+    server->response->set_status( code = '500' reason = l_excptext ).
+    exit.
+  endtry.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Y_ADL_DISP_BASE->HANDLER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] P                              TYPE        STRING
+* | [--->] H                              TYPE        SEOCLSNAME
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method HANDLER.
+  data ls_handler type ty_handler.
+  ls_handler-pattern = p.
+  ls_handler-handler = h.
+  append ls_handler to handlers.
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Y_ADL_DISP_BASE->IF_HTTP_EXTENSION~HANDLE_REQUEST
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] SERVER                         TYPE REF TO IF_HTTP_SERVER
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method IF_HTTP_EXTENSION~HANDLE_REQUEST.
+endmethod.
+ENDCLASS.

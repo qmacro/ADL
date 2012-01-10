@@ -1,0 +1,97 @@
+class Y_ADL_RES_BASE definition
+  public
+  create public .
+
+public section.
+*"* public components of class Y_ADL_RES_BASE
+*"* do not include other source files here!!!
+
+  data PAYLOAD type STRING .
+
+  methods CONSTRUCTOR
+    importing
+      !SERVER type ref to IF_HTTP_SERVER .
+  methods GET_RESPONSE
+    returning
+      value(RESPONSE) type ref to IF_HTTP_RESPONSE .
+protected section.
+*"* protected components of class Y_ADL_RES_BASE
+*"* do not include other source files here!!!
+
+  types:
+    begin of TY_URLINFO,
+      prefix type string,
+      scheme type string,
+      host   type string,
+      port   type string,
+      shp    type string,
+    end of TY_URLINFO .
+
+  data SERVEROBJ type ref to IF_HTTP_SERVER .
+  data URLINFO type TY_URLINFO .
+  data REQUEST type ref to IF_HTTP_REQUEST .
+  data RESPONSE type ref to IF_HTTP_RESPONSE .
+  data QUERYPARMS type TIHTTPNVP .
+  data QUERYPARM type IHTTPNVP .
+
+  methods APP
+    importing
+      !STRING type STRING .
+private section.
+*"* private components of class Y_ADL_RES_BASE
+*"* do not include other source files here!!!
+ENDCLASS.
+
+
+
+CLASS Y_ADL_RES_BASE IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Protected Method Y_ADL_RES_BASE->APP
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] STRING                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method APP.
+
+  concatenate payload string into payload separated by cl_abap_char_utilities=>cr_lf.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Y_ADL_RES_BASE->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] SERVER                         TYPE REF TO IF_HTTP_SERVER
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method CONSTRUCTOR.
+
+  serverobj = server.
+  request = serverobj->request.
+  response = serverobj->response.
+  urlinfo-prefix = request->get_header_field( '~script_name' ).
+  urlinfo-scheme = request->get_header_field( '~uri_scheme_expanded' ).
+  urlinfo-host   = request->get_header_field( '~server_name' ).
+  urlinfo-port   = request->get_header_field( '~server_port' ).
+  translate urlinfo-scheme to lower case.
+  concatenate
+    urlinfo-scheme '://'
+    urlinfo-host   ':'
+    urlinfo-port
+    into urlinfo-shp
+    .
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method Y_ADL_RES_BASE->GET_RESPONSE
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RESPONSE                       TYPE REF TO IF_HTTP_RESPONSE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method GET_RESPONSE.
+
+  response = me->response.
+
+endmethod.
+ENDCLASS.
