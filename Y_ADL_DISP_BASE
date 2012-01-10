@@ -64,7 +64,7 @@ method DERIVE_HANDLER.
 * an optional list of matched strings from parentheses in the pattern
 
   data:
-        l_path      type char255
+        l_path      type char2048
       , ls_handler  type ty_handler
       , lt_match    type match_result_tab
       , ls_match    type match_result
